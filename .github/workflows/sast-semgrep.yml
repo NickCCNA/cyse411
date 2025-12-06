@@ -11,7 +11,7 @@ jobs:
 
     permissions:
       contents: read
-      security-events: write   # allows uploading SARIF to Security tab
+      security-events: write    # allows uploading SARIF to Security tab
 
     steps:
       - name: Checkout repository
