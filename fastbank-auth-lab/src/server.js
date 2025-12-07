@@ -155,19 +155,20 @@ app.post("/api/logout", (req, res) => {
 app.use((req, res, next) => {
   const csrfExcluded = [
     "/",              // ✅ exclude root route
-    "/api/login",
-    "/api/logout",
-    "/api/me",
     "/robots.txt",
     "/sitemap.xml"
   ];
 
-  // Skip CSRF for excluded paths and all API routes
-  if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
+  // Only skip CSRF for exact public files, all state-changing routes are protected
+  if (csrfExcluded.includes(req.path)) {
     return next();
   }
 
-  return lusca.csrf()(req, res, next);
+  // Protect all POST, PUT, DELETE (state-changing) requests
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(req.method)) {
+    return lusca.csrf()(req, res, next);
+  }
+  next();
 });
 
 
