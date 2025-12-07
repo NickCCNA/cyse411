@@ -1,7 +1,11 @@
 const express = require("express");
 const app = express();
 
+// Disable "X-Powered-By"
+app.disable("x-powered-by");
+
 app.use(express.json());
+
 
 // Fake "database"
 const users = [
