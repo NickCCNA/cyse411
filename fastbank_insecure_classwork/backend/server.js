@@ -6,6 +6,7 @@ const sqlite3 = require("sqlite3").verbose();
 const lusca = require("lusca");
 const crypto = require("crypto");
 const rateLimit = require("express-rate-limit");
+const bcrypt = require("bcrypt");
 
 const app = express();
 
@@ -51,7 +52,8 @@ db.serialize(() => {
     );
   `);
 
-  const passwordHash = crypto.createHash("sha256").update("password123").digest("hex");
+  const salt = bcrypt.genSaltSync(10);
+  const passwordHash = bcrypt.hashSync("password123", salt);
 
   db.run(`INSERT INTO users (username, password_hash, email)
           VALUES ('alice', '${passwordHash}', 'alice@example.com');`);
@@ -63,9 +65,7 @@ db.serialize(() => {
 // --- SESSION STORE (simple, predictable token exactly like assignment) ---
 const sessions = {};
 
-function fastHash(pwd) {
-  return crypto.createHash("sha256").update(pwd).digest("hex");
-}
+// Password hashing now uses bcrypt; fastHash removed.
 
 function auth(req, res, next) {
   const sid = req.cookies.sid;
@@ -94,8 +94,8 @@ app.post("/login", loginLimiter, (req, res) => {
   db.get(sql, [username], (err, user) => {
     if (!user) return res.status(404).json({ error: "Unknown username" });
 
-    const candidate = fastHash(password);
-    if (candidate !== user.password_hash) {
+    const isPasswordValid = bcrypt.compareSync(password, user.password_hash);
+    if (!isPasswordValid) {
       return res.status(401).json({ error: "Wrong password" });
     }
 
