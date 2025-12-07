@@ -5,6 +5,7 @@ const crypto = require("crypto");
 // bcrypt is installed but NOT used in the vulnerable baseline:
 const bcrypt = require("bcrypt");
 const lusca = require("lusca");
+const helmet = require("helmet");
 
 const app = express();
 const PORT = 3001;
@@ -14,6 +15,41 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static("public"));
 app.use(lusca.csrf());
+
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
+      imgSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"]
+    }
+  })
+);
+
+// Permissions Policy (Fixes ZAP 10063)
+app.use((req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=()"
+  );
+  next();
+});
+
+// Fix ZAP’s expected files to prevent warnings
+app.get("/robots.txt", (req, res) => {
+  res.type("text/plain");
+  res.send("User-agent: *\nDisallow:");
+});
+
+app.get("/sitemap.xml", (req, res) => {
+  res.type("application/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>`);
+});
 
 /**
  * VULNERABLE FAKE USER DB
