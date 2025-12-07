@@ -24,7 +24,36 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static("public"));
-app.use(lusca.csrf());
+
+app.use((req, res, next) => {
+  const csrfExcluded = [
+    "/api/login",
+    "/api/logout",
+    "/api/me",
+    "/robots.txt",
+    "/sitemap.xml"
+  ];
+
+  if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
+    return next();
+  }
+
+  return lusca.csrf()(req, res, next);
+});
+
+// ---- 404 SAFE HANDLER ----
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Not found" });
+});
+
+// ---- ERROR HANDLER ----
+app.use((err, req, res, next) => {
+  console.error("Internal error:", err);
+  res.status(500).json({
+    success: false,
+    message: "Internal server error"
+  });
+});
 
 app.use(
   helmet.contentSecurityPolicy({
