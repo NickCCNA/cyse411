@@ -25,6 +25,7 @@ jobs:
         working-directory: canonicalization-example
         run: |
           npm install
+          npm install helmet
 
 
       - name: Start vulnerable app
