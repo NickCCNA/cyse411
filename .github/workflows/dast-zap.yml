@@ -25,6 +25,7 @@ jobs:
         working-directory: fastbank-auth-lab/src
         run: |
           npm install
+          npm install lusca
           npm install helmet
 
       - name: Start vulnerable app
