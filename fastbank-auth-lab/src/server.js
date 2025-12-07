@@ -24,8 +24,8 @@ const users = [
   {
     id: 1,
     username: "student",
-    // VULNERABLE: fast hash without salt
-    passwordHash: fastHash("password123") // students must replace this scheme with bcrypt
+    // FIXED: bcrypt hash with salt
+    passwordHash: bcrypt.hashSync("password123", bcrypt.genSaltSync(12)) // password is "password123"
   }
 ];
 
@@ -36,9 +36,7 @@ const sessions = {}; // token -> { userId }
  * VULNERABLE FAST HASH FUNCTION
  * Students MUST STOP using this and replace logic with bcrypt.
  */
-function fastHash(password) {
-  return crypto.createHash("sha256").update(password).digest("hex");
-}
+// fastHash function removed; use bcrypt instead
 
 // Helper: find user by username
 function findUser(username) {
@@ -74,8 +72,8 @@ app.post("/api/login", (req, res) => {
       .json({ success: false, message: "Unknown username" });
   }
 
-  const candidateHash = fastHash(password);
-  if (candidateHash !== user.passwordHash) {
+  // Use bcrypt to verify password
+  if (!bcrypt.compareSync(password, user.passwordHash)) {
     return res
       .status(401)
       .json({ success: false, message: "Wrong password" });
