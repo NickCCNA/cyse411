@@ -126,11 +126,11 @@ app.get("/transactions", auth, (req, res) => {
   const sql = `
     SELECT id, amount, description
     FROM transactions
-    WHERE user_id = ${req.user.id}
-      AND description LIKE '%${q}%'
+    WHERE user_id = ?
+      AND description LIKE ?
     ORDER BY id DESC
   `;
-  db.all(sql, (err, rows) => res.json(rows));
+  db.all(sql, [req.user.id, `%${q}%`], (err, rows) => res.json(rows));
 });
 
 // ------------------------------------------------------------
