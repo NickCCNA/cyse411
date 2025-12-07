@@ -31,6 +31,7 @@ function resolveSafe(baseDir, userInput) {
 // Secure route
 app.post(
   '/read',
+  readNoValidateLimiter,
   body('filename')
     .exists().withMessage('filename required')
     .bail()
