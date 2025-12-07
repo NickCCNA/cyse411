@@ -35,12 +35,17 @@ app.use(
 // Permissions Policy
 app.use((req, res, next) => {
   res.setHeader(
-    "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()"
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self';"
   );
+
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=()"
+  );
+
   next();
 });
-
 /**
  * VULNERABLE FAKE USER DB
  * For simplicity, we start with a single user whose password is "password123".
