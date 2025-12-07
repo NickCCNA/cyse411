@@ -8,6 +8,16 @@ const lusca = require("lusca");
 const helmet = require("helmet");
 
 const app = express();
+
+app.use((req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=()"
+  );
+  next();
+});
+app.disable("x-powered-by");
+
 const PORT = 3001;
 
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -18,6 +28,7 @@ app.use(lusca.csrf());
 
 app.use(
   helmet.contentSecurityPolicy({
+    useDefaults: true,
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
@@ -26,19 +37,12 @@ app.use(
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
-      baseUri: ["'self'"]
+      baseUri: ["'self'"],
+      formAction: ["'self'"]
     }
   })
 );
 
-// Permissions Policy (Fixes ZAP 10063)
-app.use((req, res, next) => {
-  res.setHeader(
-    "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=()"
-  );
-  next();
-});
 
 // Fix ZAP’s expected files to prevent warnings
 app.get("/robots.txt", (req, res) => {
@@ -137,6 +141,14 @@ app.post("/api/logout", (req, res) => {
   }
   res.clearCookie("session");
   res.json({ success: true });
+});
+
+app.use((err, req, res, next) => {
+  console.error("Internal error:", err); // OK to log server-side
+  res.status(500).json({
+    success: false,
+    message: "Internal server error"
+  });
 });
 
 app.listen(PORT, () => {
