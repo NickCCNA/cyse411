@@ -89,9 +89,9 @@ const loginLimiter = rateLimit({
 app.post("/login", loginLimiter, (req, res) => {
   const { username, password } = req.body;
 
-  const sql = `SELECT id, username, password_hash FROM users WHERE username = '${username}'`;
+  const sql = "SELECT id, username, password_hash FROM users WHERE username = ?";
 
-  db.get(sql, (err, user) => {
+  db.get(sql, [username], (err, user) => {
     if (!user) return res.status(404).json({ error: "Unknown username" });
 
     const candidate = fastHash(password);
