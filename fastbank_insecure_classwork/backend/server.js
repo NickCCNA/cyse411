@@ -138,6 +138,12 @@ const changeEmailLimiter = rateLimit({
   max: 10,
   message: { error: "Too many requests to /change-email. Please try again later." }
 });
+// Rate limiter for /feedback: e.g., 100 requests per 15 minutes per IP
+const feedbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: { error: "Too many requests to /feedback. Please try again later." }
+});
 // ------------------------------------------------------------
 // Q1 — SQLi in transaction search
 // ------------------------------------------------------------
@@ -157,7 +163,7 @@ app.get("/transactions", auth, transactionsLimiter, (req, res) => {
 // Q2 — Stored XSS + SQLi in feedback insert
 // ------------------------------------------------------------
 
-app.get("/feedback", auth, (req, res) => {
+app.get("/feedback", auth, feedbackLimiter, (req, res) => {
   db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
     res.json(rows);
   });
