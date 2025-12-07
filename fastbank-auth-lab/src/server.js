@@ -17,6 +17,30 @@ app.use(express.static("public"));
 app.use(helmet());
 app.disable("x-powered-by");
 
+// Content Security Policy
+app.use(
+  helmet.contentSecurityPolicy({
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
+      imgSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      connectSrc: ["'self'"],
+      frameAncestors: ["'none'"],
+    },
+  })
+);
+
+// Permissions Policy
+app.use((req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()"
+  );
+  next();
+});
+
 /**
  * VULNERABLE FAKE USER DB
  * For simplicity, we start with a single user whose password is "password123".
