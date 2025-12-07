@@ -1,58 +1,77 @@
+// Hardened Express app with comprehensive security headers and safe error handling
+
 const express = require("express");
-const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const lusca = require("lusca");
 const helmet = require("helmet");
+const path = require("path");
 
 const app = express();
 const PORT = 3001;
+const isProd = process.env.NODE_ENV === "production";
 
 /* ---------------- SECURITY HEADERS ---------------- */
 app.disable("x-powered-by");
 
 app.use(
   helmet({
+    // Cross-origin isolation for Spectre mitigations
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+    crossOriginEmbedderPolicy: { policy: "require-corp" },
+    crossOriginResourcePolicy: { policy: "same-origin" },
+
+    // Content Security Policy (explicit directives, no fallbacks)
     contentSecurityPolicy: {
-      useDefaults: true,
+      useDefaults: false,
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
         styleSrc: ["'self'"],
         imgSrc: ["'self'"],
+        fontSrc: ["'self'"],
         connectSrc: ["'self'"],
+        mediaSrc: ["'self'"],
+        workerSrc: ["'self'"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
-        formAction: ["'self'"]
+        formAction: ["'self'"],
+        upgradeInsecureRequests: []
       }
-    }
+    },
+
+    // Other recommended headers
+    referrerPolicy: { policy: "no-referrer" },
+    hsts: isProd ? { maxAge: 15552000, includeSubDomains: true } : false
   })
 );
 
+// Permissions-Policy (feature policy)
 app.use((req, res, next) => {
-  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
-  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=(), interest-cohort=()"
+  );
   next();
 });
 
-/* ---------------- ERROR HANDLER ---------------- */
-app.use((err, req, res, next) => {
-  // In production, avoid logging full error details
-  console.error("SERVER ERROR"); 
-  res.status(500).json({ success: false, message: "Internal server error" });
-});
-
-
 /* ---------------- PARSERS ---------------- */
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
 app.use(cookieParser());
 
 /* ---------------- STATIC FILES ---------------- */
-app.use(express.static("public"));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    etag: true,
+    maxAge: isProd ? "7d" : 0,
+    setHeaders: (res) => {
+      res.setHeader("Cache-Control", isProd ? "public, max-age=604800" : "no-store");
+    }
+  })
+);
 
 /* ---------------- FIX robots + sitemap ---------------- */
 app.get("/robots.txt", (req, res) => {
@@ -60,8 +79,7 @@ app.get("/robots.txt", (req, res) => {
 });
 
 app.get("/sitemap.xml", (req, res) => {
-  res.type("application/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>`);
+  res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>`);
 });
 
 /* ---------------- USER DATABASE ---------------- */
@@ -73,7 +91,7 @@ const users = [
   }
 ];
 
-const sessions = {}; // token → { userId }
+const sessions = {}; // token → { userId, createdAt }
 
 /* ---------------- HELPERS ---------------- */
 function findUser(username) {
@@ -89,36 +107,36 @@ function generateSessionToken() {
 app.get("/api/me", (req, res) => {
   const token = req.cookies.session;
   if (!token || !sessions[token]) {
-    return res.status(401).json({ authenticated: false });
+    return res.status(200).json({ authenticated: false });
   }
   const user = users.find((u) => u.id === sessions[token].userId);
+  if (!user) {
+    return res.status(200).json({ authenticated: false });
+  }
   res.json({ authenticated: true, username: user.username });
 });
 
 app.post("/api/login", (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
   const user = findUser(username);
 
   // Prevent username enumeration
   if (!user) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid credentials" });
+    return res.status(401).json({ success: false, message: "Invalid credentials" });
   }
 
-  if (!bcrypt.compareSync(password, user.passwordHash)) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Invalid credentials" });
+  const ok = bcrypt.compareSync(password || "", user.passwordHash);
+  if (!ok) {
+    return res.status(401).json({ success: false, message: "Invalid credentials" });
   }
 
   const token = generateSessionToken();
-  sessions[token] = { userId: user.id };
+  sessions[token] = { userId: user.id, createdAt: Date.now() };
 
   res.cookie("session", token, {
     httpOnly: true,
-    secure: false, // set true in production with HTTPS
-    sameSite: "lax"
+    secure: isProd, // true in production with HTTPS
+    sameSite: "strict"
   });
 
   res.json({ success: true });
@@ -127,12 +145,11 @@ app.post("/api/login", (req, res) => {
 app.post("/api/logout", (req, res) => {
   const token = req.cookies.session;
   if (token) delete sessions[token];
-  res.clearCookie("session");
+  res.clearCookie("session", { httpOnly: true, secure: isProd, sameSite: "strict" });
   res.json({ success: true });
 });
 
 /* ---------------- CSRF PROTECTION ---------------- */
-
 app.use((req, res, next) => {
   const csrfExcluded = [
     "/api/login",
@@ -141,17 +158,31 @@ app.use((req, res, next) => {
     "/robots.txt",
     "/sitemap.xml"
   ];
-
   if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
     return next();
   }
-
   return lusca.csrf()(req, res, next);
 });
 
 /* ---------------- HOME ROUTE ---------------- */
 app.get("/", (req, res) => {
   res.status(200).json({ status: "ok" });
+});
+
+/* ---------------- 404 HANDLER ---------------- */
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Not found" });
+});
+
+/* ---------------- ERROR HANDLER (FINAL) ---------------- */
+app.use((err, req, res, next) => {
+  // Avoid detailed error logging in production
+  if (!isProd) {
+    console.error("SERVER ERROR:", err);
+  } else {
+    console.error("SERVER ERROR");
+  }
+  res.status(500).json({ success: false, message: "Internal server error" });
 });
 
 /* ---------------- START ---------------- */
