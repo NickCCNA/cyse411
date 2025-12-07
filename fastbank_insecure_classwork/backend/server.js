@@ -132,6 +132,12 @@ const transactionsLimiter = rateLimit({
   message: { error: "Too many requests to /transactions. Please try again later." }
 });
 
+// Rate limiter for /change-email: e.g., 10 requests per 15 minutes per IP
+const changeEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  message: { error: "Too many requests to /change-email. Please try again later." }
+});
 // ------------------------------------------------------------
 // Q1 — SQLi in transaction search
 // ------------------------------------------------------------
@@ -160,7 +166,7 @@ app.get("/feedback", auth, (req, res) => {
 // ------------------------------------------------------------
 // Q3 — CSRF + SQLi in email update
 // ------------------------------------------------------------
-app.post("/change-email", auth, (req, res) => {
+app.post("/change-email", auth, changeEmailLimiter, (req, res) => {
   const newEmail = req.body.email;
 
   if (!newEmail.includes("@")) return res.status(400).json({ error: "Invalid email" });
