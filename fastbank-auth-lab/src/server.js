@@ -4,7 +4,8 @@ const cookieParser = require("cookie-parser");
 const crypto = require("crypto");
 // bcrypt is installed but NOT used in the vulnerable baseline:
 const bcrypt = require("bcrypt");
-const lusca = require("lusca");
+const helmet = require("helmet");
+
 
 const app = express();
 const PORT = 3001;
@@ -13,7 +14,8 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 app.use(express.static("public"));
-app.use(lusca.csrf());
+app.use(helmet());
+app.disable("x-powered-by");
 
 /**
  * VULNERABLE FAKE USER DB
