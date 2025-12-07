@@ -112,7 +112,14 @@ app.post("/login", loginLimiter, (req, res) => {
 // ------------------------------------------------------------
 // /me — clean route, no vulnerabilities
 // ------------------------------------------------------------
-app.get("/me", auth, (req, res) => {
+// Apply a rate limiter for /me requests (e.g., 100 requests per 15 minutes per IP)
+const meLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: { error: "Too many requests to /me. Please try again later." }
+});
+
+app.get("/me", auth, meLimiter, (req, res) => {
   db.get(`SELECT username, email FROM users WHERE id = ${req.user.id}`, (err, row) => {
     res.json(row);
   });
