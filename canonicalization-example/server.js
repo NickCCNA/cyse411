@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const { body, validationResult } = require('express-validator');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 app.use(express.urlencoded({ extended: false }));
@@ -12,6 +13,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 const BASE_DIR = path.resolve(__dirname, 'files');
 if (!fs.existsSync(BASE_DIR)) fs.mkdirSync(BASE_DIR, { recursive: true });
 
+// Apply rate limiting only to /read-no-validate route
+const readNoValidateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the RateLimit-* headers
+  legacyHeaders: false, // Disable the X-RateLimit-* headers
+});
 // helper to canonicalize and check
 function resolveSafe(baseDir, userInput) {
   try {
@@ -50,7 +58,7 @@ app.post(
 );
 
 // Vulnerable route (demo)
-app.post('/read-no-validate', (req, res) => {
+app.post('/read-no-validate', readNoValidateLimiter, (req, res) => {
   const filename = req.body.filename || '';
   const normalized = resolveSafe(BASE_DIR, filename);
   if (!normalized.startsWith(BASE_DIR + path.sep)) {
