@@ -32,12 +32,19 @@ app.use(
 );
 
 app.use((req, res, next) => {
-  res.setHeader(
-    "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=()"
-  );
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   next();
 });
+
+/* ---------------- ERROR HANDLER ---------------- */
+app.use((err, req, res, next) => {
+  // In production, avoid logging full error details
+  console.error("SERVER ERROR"); 
+  res.status(500).json({ success: false, message: "Internal server error" });
+});
+
 
 /* ---------------- PARSERS ---------------- */
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -145,20 +152,6 @@ app.use((req, res, next) => {
 /* ---------------- HOME ROUTE ---------------- */
 app.get("/", (req, res) => {
   res.status(200).json({ status: "ok" });
-});
-
-/* ---------------- 404 HANDLER ---------------- */
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Not found" });
-});
-
-/* ---------------- ERROR HANDLER (FINAL) ---------------- */
-app.use((err, req, res, next) => {
-  console.error("SERVER ERROR:", err);
-  res.status(500).json({
-    success: false,
-    message: "Internal server error"
-  });
 });
 
 /* ---------------- START ---------------- */
