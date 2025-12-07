@@ -20,12 +20,12 @@ jobs:
           node-version: '20'
 
       - name: Install lab dependencies
-        working-directory: fastbank_insecure_classwork/backend
+        working-directory: fastbank-auth-lab/src
         run: |
           npm install
 
       - name: Start vulnerable app
-        working-directory: fastbank_insecure_classwork/backend
+        working-directory: fastbank-auth-lab/src
         run: |
           npm start &
           # wait for the server to boot
