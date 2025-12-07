@@ -160,9 +160,9 @@ app.post("/change-email", auth, (req, res) => {
   if (!newEmail.includes("@")) return res.status(400).json({ error: "Invalid email" });
 
   const sql = `
-    UPDATE users SET email = '${newEmail}' WHERE id = ${req.user.id}
+    UPDATE users SET email = ? WHERE id = ?
   `;
-  db.run(sql, () => {
+  db.run(sql, [newEmail, req.user.id], () => {
     res.json({ success: true, email: newEmail });
   });
 });
