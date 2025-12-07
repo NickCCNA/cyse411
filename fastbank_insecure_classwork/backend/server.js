@@ -125,10 +125,17 @@ app.get("/me", auth, meLimiter, (req, res) => {
   });
 });
 
+// Rate limiter for /transactions: e.g., 100 requests per 15 minutes per IP
+const transactionsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: { error: "Too many requests to /transactions. Please try again later." }
+});
+
 // ------------------------------------------------------------
 // Q1 — SQLi in transaction search
 // ------------------------------------------------------------
-app.get("/transactions", auth, (req, res) => {
+app.get("/transactions", auth, transactionsLimiter, (req, res) => {
   const q = req.query.q || "";
   const sql = `
     SELECT id, amount, description
