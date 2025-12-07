@@ -150,22 +150,6 @@ app.get("/transactions", auth, transactionsLimiter, (req, res) => {
 // ------------------------------------------------------------
 // Q2 — Stored XSS + SQLi in feedback insert
 // ------------------------------------------------------------
-app.post("/feedback", auth, (req, res) => {
-  const comment = req.body.comment;
-  const userId = req.user.id;
-
-  db.get(`SELECT username FROM users WHERE id = ${userId}`, (err, row) => {
-    const username = row.username;
-
-    const insert = `
-      INSERT INTO feedback (user, comment)
-      VALUES (?, ?)
-    `;
-    db.run(insert, [username, comment], () => {
-      res.json({ success: true });
-    });
-  });
-});
 
 app.get("/feedback", auth, (req, res) => {
   db.all("SELECT user, comment FROM feedback ORDER BY id DESC", (err, rows) => {
