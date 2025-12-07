@@ -1,72 +1,31 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const cookieParser = require("cookie-parser");
-const crypto = require("crypto");
-// bcrypt is installed but NOT used in the vulnerable baseline:
 const bcrypt = require("bcrypt");
 const lusca = require("lusca");
 const helmet = require("helmet");
 
 const app = express();
-
-app.use((req, res, next) => {
-  res.setHeader(
-    "Permissions-Policy",
-    "geolocation=(), microphone=(), camera=()"
-  );
-  next();
-});
-app.disable("x-powered-by");
-
 const PORT = 3001;
 
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
-app.use(cookieParser());
+/* ----------------------------------------------------
+   SECURITY HEADERS (GLOBAL)
+---------------------------------------------------- */
 
-app.get("/", (req, res) => {
-  res.status(200).json({ status: "ok" });
-});
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Not found" });
-});
-app.use((err, req, res, next) => {
-  console.error("Internal error:", err);
-  res.status(500).json({ success: false, message: "Internal server error" });
-});
+// Remove X-Powered-By
+app.disable("x-powered-by");
 
-app.use(express.static("public"));
+// Full Helmet (adds: nosniff, hsts, noopen, frameguard, etc.)
+app.use(helmet());
 
-app.use((req, res, next) => {
-  const csrfExcluded = [
-    "/api/login",
-    "/api/logout",
-    "/api/me",
-    "/robots.txt",
-    "/sitemap.xml"
-  ];
+// Strict site isolation (fix ZAP 90004)
+app.use(
+  helmet.crossOriginOpenerPolicy({
+    policy: "same-origin"
+  })
+);
 
-  if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
-    return next();
-  }
-
-  return lusca.csrf()(req, res, next);
-});
-
-// ---- 404 SAFE HANDLER ----
-app.use((req, res) => {
-  res.status(404).json({ success: false, message: "Not found" });
-});
-
-// ---- ERROR HANDLER ----
-app.use((err, req, res, next) => {
-  console.error("Internal error:", err);
-  res.status(500).json({
-    success: false,
-    message: "Internal server error"
-  });
-});
-
+// CSP for XSS protection
 app.use(
   helmet.contentSecurityPolicy({
     useDefaults: true,
@@ -84,114 +43,154 @@ app.use(
   })
 );
 
+// Permissions Policy
+app.use((req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "geolocation=(), microphone=(), camera=()"
+  );
+  next();
+});
 
-// Fix ZAP’s expected files to prevent warnings
+/* ----------------------------------------------------
+   BODY / COOKIE PARSING
+---------------------------------------------------- */
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+app.use(cookieParser());
+
+/* ----------------------------------------------------
+   STATIC FILES
+---------------------------------------------------- */
+app.use(express.static("public"));
+
+/* ----------------------------------------------------
+   CSRF PROTECTION
+---------------------------------------------------- */
+const csrfExcluded = [
+  "/api/login",
+  "/api/logout",
+  "/api/me",
+  "/robots.txt",
+  "/sitemap.xml"
+];
+
+app.use((req, res, next) => {
+  if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
+    return next();
+  }
+  return lusca.csrf()(req, res, next);
+});
+
+/* ----------------------------------------------------
+   FIX /robots.txt and /sitemap.xml FOR ZAP
+---------------------------------------------------- */
 app.get("/robots.txt", (req, res) => {
-  res.type("text/plain");
-  res.send("User-agent: *\nDisallow:");
+  res.type("text/plain").send("User-agent: *\nDisallow:");
 });
 
 app.get("/sitemap.xml", (req, res) => {
-  res.type("application/xml");
-  res.send(`<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>`);
+  res.type("application/xml").send(
+    `<?xml version="1.0" encoding="UTF-8"?><urlset></urlset>`
+  );
 });
 
-/**
- * VULNERABLE FAKE USER DB
- * For simplicity, we start with a single user whose password is "password123".
- * In the vulnerable version, we hash with a fast hash (SHA-256-like).
- */
+/* ----------------------------------------------------
+   FAKE USER DB
+---------------------------------------------------- */
 const users = [
   {
     id: 1,
     username: "student",
-    // FIXED: bcrypt hash with salt
-    passwordHash: bcrypt.hashSync("password123", bcrypt.genSaltSync(12)) // password is "password123"
+    passwordHash: bcrypt.hashSync("password123", bcrypt.genSaltSync(12))
   }
 ];
 
-// In-memory session store
-const sessions = {}; // token -> { userId }
+const sessions = {}; // token → { userId }
 
-/**
- * VULNERABLE FAST HASH FUNCTION
- * Students MUST STOP using this and replace logic with bcrypt.
- */
-// fastHash function removed; use bcrypt instead
-
-// Helper: find user by username
+/* ----------------------------------------------------
+   HELPERS
+---------------------------------------------------- */
 function findUser(username) {
   return users.find((u) => u.username === username);
 }
 
-// Home API just to show who is logged in
+/* ----------------------------------------------------
+   API: WHO AM I
+---------------------------------------------------- */
 app.get("/api/me", (req, res) => {
   const token = req.cookies.session;
+
   if (!token || !sessions[token]) {
     return res.status(401).json({ authenticated: false });
   }
+
   const session = sessions[token];
   const user = users.find((u) => u.id === session.userId);
+
   res.json({ authenticated: true, username: user.username });
 });
 
-/**
- * VULNERABLE LOGIN ENDPOINT
- * - Uses fastHash instead of bcrypt
- * - Error messages leak whether username exists
- * - Session token is simple and predictable
- * - Cookie lacks security flags
- */
+/* ----------------------------------------------------
+   API: LOGIN (still intentionally vulnerable)
+---------------------------------------------------- */
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
   const user = findUser(username);
 
   if (!user) {
-    // VULNERABLE: username enumeration via message
-    return res
-      .status(401)
-      .json({ success: false, message: "Unknown username" });
+    return res.status(401).json({ success: false, message: "Unknown username" });
   }
 
-  // Use bcrypt to verify password
   if (!bcrypt.compareSync(password, user.passwordHash)) {
-    return res
-      .status(401)
-      .json({ success: false, message: "Wrong password" });
+    return res.status(401).json({ success: false, message: "Wrong password" });
   }
 
-  // VULNERABLE: predictable token
+  // Predictable token (intentionally vulnerable)
   const token = username + "-" + Date.now();
 
-  // VULNERABLE: session stored without expiration
   sessions[token] = { userId: user.id };
 
-  // VULNERABLE: cookie without httpOnly, secure, sameSite
-  res.cookie("session", token, {
-    // students must add: httpOnly: true, secure: true, sameSite: "lax"
-  });
+  // Insecure cookie (intentionally vulnerable)
+  res.cookie("session", token);
 
-  // Client-side JS (login.html) will store this token in localStorage (vulnerable)
   res.json({ success: true, token });
 });
 
+/* ----------------------------------------------------
+   API: LOGOUT
+---------------------------------------------------- */
 app.post("/api/logout", (req, res) => {
   const token = req.cookies.session;
-  if (token && sessions[token]) {
-    delete sessions[token];
-  }
+  if (token && sessions[token]) delete sessions[token];
+
   res.clearCookie("session");
   res.json({ success: true });
 });
 
-app.use((err, req, res, next) => {
-  console.error("Internal error:", err); // OK to log server-side
-  res.status(500).json({
-    success: false,
-    message: "Internal server error"
-  });
+/* ----------------------------------------------------
+   SAFE ROOT & NOT FOUND ROUTE
+---------------------------------------------------- */
+app.get("/", (req, res) => {
+  res.status(200).json({ status: "ok" });
 });
 
+// Final 404
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Not found" });
+});
+
+/* ----------------------------------------------------
+   ERROR HANDLER
+---------------------------------------------------- */
+app.use((err, req, res, next) => {
+  console.error("Internal error:", err);
+  res.status(500).json({ success: false, message: "Internal server error" });
+});
+
+/* ----------------------------------------------------
+   START SERVER
+---------------------------------------------------- */
 app.listen(PORT, () => {
   console.log(`FastBank Auth Lab running at http://localhost:${PORT}`);
 });
