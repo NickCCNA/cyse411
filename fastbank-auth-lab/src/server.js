@@ -12,6 +12,8 @@ const app = express();
 const PORT = 3001;
 const isProd = process.env.NODE_ENV === "production";
 
+const csrfExcluded = ["/", "/api/login", "/api/logout", "/api/me", "/robots.txt", "/sitemap.xml"];
+
 /* ---------------- SECURITY HEADERS ---------------- */
 app.disable("x-powered-by");
 
@@ -152,17 +154,22 @@ app.post("/api/logout", (req, res) => {
 /* ---------------- CSRF PROTECTION ---------------- */
 app.use((req, res, next) => {
   const csrfExcluded = [
+    "/",              // ✅ exclude root route
     "/api/login",
     "/api/logout",
     "/api/me",
     "/robots.txt",
     "/sitemap.xml"
   ];
+
+  // Skip CSRF for excluded paths and all API routes
   if (csrfExcluded.includes(req.path) || req.path.startsWith("/api/")) {
     return next();
   }
+
   return lusca.csrf()(req, res, next);
 });
+
 
 /* ---------------- HOME ROUTE ---------------- */
 app.get("/", (req, res) => {
